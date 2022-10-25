@@ -167,24 +167,21 @@ echo
 # only non-docker
 if [ $isDocker -eq 0 ]; then
   # check cgroup-tools only necessary when lightning runs as systemd service
-  if [ -f /etc/systemd/system/lnd.service ] ||
-    [ -f /etc/systemd/system/lightningd.service ]; then
-    echo "Checking cgroup-tools..."
-    checkcgroup=$(cgcreate -h 2>/dev/null | grep -c "Usage")
-    if [ $checkcgroup -eq 0 ]; then
-      echo "Installing cgroup-tools..."
-      if apt install -y cgroup-tools >/dev/null; then
-        echo "> cgroup-tools installed"
-        echo
-      else
-        echo "> failed to install cgroup-tools"
-        echo
-        exit 1
-      fi
-    else
-      echo "> cgroup-tools found"
+  echo "Checking cgroup-tools..."
+  checkcgroup=$(cgcreate -h 2>/dev/null | grep -c "Usage")
+  if [ $checkcgroup -eq 0 ]; then
+    echo "Installing cgroup-tools..."
+    if apt install -y cgroup-tools >/dev/null; then
+      echo "> cgroup-tools installed"
       echo
+    else
+      echo "> failed to install cgroup-tools"
+      echo
+      exit 1
     fi
+  else
+    echo "> cgroup-tools found"
+    echo
   fi
 fi
 

@@ -51,12 +51,17 @@ done
 
 # Check if docker / non-docker
 isDocker=0
+dockerNetwork="docker-tunnelsats"
+dockerScriptPrefix=""
+dockerMainDir=""
+
 while true; do
     read -p "What lightning node package are you running?: 
     1) RaspiBlitz
     2) Umbrel
     3) myNode
-    4) RaspiBolt / Bare Metal
+    4) RaspiBolt
+    5) Citadel
     > " answer
 
     case $answer in
@@ -71,6 +76,14 @@ while true; do
         echo "> Umbrel"
         echo
         isDocker=1
+        dockerScriptPrefix="umbrel"
+        dockerMainDir=$(find / -maxdepth 6 -not -path "/mnt/*" -type f -name "bitcoin.conf" -print 2>/dev/null | sed -e 's#/bitcoin/bitcoin.conf##')
+        if [[ $dockerMainDir =~ [[:space:]] ]]; then
+            echo "> umbrel main path is ambiguous"
+            echo "> error: $dockerMainDir (contains more than one)"
+            echo "> your umbrel setup is not compatible with TunnelSats"
+            exit 1
+        fi
         break
         ;;
 
@@ -82,9 +95,25 @@ while true; do
         ;;
 
     4)
-        echo "> RaspiBolt / Bare Metal"
+        echo "> RaspiBolt"
         echo
         isDocker=0
+        break
+        ;;
+
+    5)
+        echo "> Citadel"
+        echo
+        isDocker=1
+        dockerNetwork="a-docker-tunnelsats"
+        dockerScriptPrefix="citadel"
+        dockerMainDir=$(find / -maxdepth 6 -not -path "/mnt/*" -type f -name "bitcoin.conf" -print 2>/dev/null | sed -e 's#/bitcoin/bitcoin.conf##')
+        if [[ $dockerMainDir =~ [[:space:]] ]]; then
+            echo "> citadel main path is ambiguous"
+            echo "> error: $dockerMainDir (contains more than one)"
+            echo "> your citadel setup is not compatible with TunnelSats"
+            exit 1
+        fi
         break
         ;;
 
@@ -108,7 +137,7 @@ while true; do
             if [ -n "$container" ]; then
                 if docker stop "$container" &>/dev/null; then
                     #try disconnecting network if present
-                    docker network disconnect docker-tunnelsats "$container" &>/dev/null
+                    docker network disconnect $dockerNetwork "$container" &>/dev/null
                     docker rm "$container" &>/dev/null
                     echo "> Successfully stopped $container docker container"
                     echo
@@ -161,8 +190,8 @@ while true; do
         # modify LND configuration
         path=""
         if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi
-        if [ -f "$HOME"/umbrel/lnd/lnd.conf ]; then path="$HOME""/umbrel/lnd/lnd.conf"; fi
-        if [ -f "$HOME"/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="$HOME""/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
+        if [ -f ${dockerMainDir}/lnd/lnd.conf ]; then path="${dockerMainDir}/lnd/lnd.conf"; fi
+        if [ -f ${dockerMainDir}/app-data/lightning/data/lnd/lnd.conf ]; then path="${dockerMainDir}/app-data/lightning/data/lnd/lnd.conf"; fi
         if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi
         if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
         if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
@@ -184,6 +213,29 @@ while true; do
                 fi
             fi
         fi
+
+        # citadel: extra round for lnd-sample.conf template
+        if [ $dockerScriptPrefix == "citadel" ]; then
+            if [ -f ${dockerMainDir}/templates/lnd-sample.conf ]; then
+                path="${dockerMainDir}/templates/lnd-sample.conf"
+                check=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
+                if [ $check -ne 0 ]; then
+
+                    sed -i "/tor.skip-proxy-for-clearnet-targets/d" "$path"
+
+                    # recheck
+                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
+                    if [ $checkAgain -ne 0 ]; then
+                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your LND configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!"
+                        echo
+                    else
+                        echo "> Hybrid Mode successfully deactivated"
+                        echo
+                    fi
+                fi
+            fi
+        fi
+
         break
         ;;
 
@@ -197,7 +249,7 @@ while true; do
             if [ -n "$container" ]; then
                 if docker stop "$container" &>/dev/null; then
                     #try disconnecting network if present
-                    docker network disconnect docker-tunnelsats "$container" &>/dev/null
+                    docker network disconnect $dockerNetwork "$container" &>/dev/null
                     docker rm "$container" &>/dev/null
                     echo "> Successfully stopped $container docker container"
                     echo
@@ -250,7 +302,7 @@ while true; do
         # modify CLN configuration
         path=""
         if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
-        if [ -f "$HOME"/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="$HOME""/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
+        if [ -f ${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
         if [ -f /data/lightningd/config ]; then path="/data/lightningd/config"; fi
 
         if [ "$path" != "" ]; then
@@ -271,8 +323,8 @@ while true; do
                 fi
             fi
 
-            # Umbrel 0.5+ CLN: restore default configuration
-            if [ "$path" == "$HOME""/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
+            # Umbrel | Citadel CLN: restore default configuration
+            if [ "$path" == "${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
                 deleteBind=$(grep -n "^bind-addr" "$path" | cut -d ':' -f1)
                 if [ "$deleteBind" != "" ]; then
                     sed -i "${deleteBind}d" "$path" >/dev/null
@@ -288,12 +340,13 @@ while true; do
                     echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!"
                     echo
                 else
-                    echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored."
+                    echo "> Umbrel | Citadel: hybrid mode deactivated and configuration restored."
                     echo
                 fi
             fi
-            # Umbrel 0.5+ CLN: restore assigned port
-            if [ "$path" == "$HOME""/umbrel/app-data/core-lightning/exports.sh" ]; then
+
+            # Umbrel | Citadel CLN: restore assigned port
+            if [ "$path" == "${dockerMainDir}/app-data/core-lightning/exports.sh" ]; then
                 getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
                 if [ "$getPort" != "" ]; then
                     sed -i "s/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"/g" "$path" >/dev/null
@@ -304,7 +357,7 @@ while true; do
                     echo "> Restoring assigned port failed. Please check ${path} file and set APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"."
                     echo
                 else
-                    echo "> Umbrel 0.5+ CLN: port assignment successfully restored."
+                    echo "> Umbrel | Citadel CLN: port assignment successfully restored."
                     echo
                 fi
             fi
@@ -416,17 +469,17 @@ if [ $isDocker -eq 1 ]; then
     echo "Removing tunnelsats specific routing rules..."
     ip route flush table 51820 &>/dev/null
 
-    echo "Disconnecting containers from docker-tunnelsats network..."
-    docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
+    echo "Disconnecting containers from $dockerNetwork network..."
+    docker inspect $dockerNetwork | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect $dockerNetwork  %'
 
-    checkdockernetwork=$(docker network ls 2>/dev/null | grep -c "docker-tunnelsats")
+    checkdockernetwork=$(docker network ls 2>/dev/null | grep -c $dockerNetwork)
     if [ $checkdockernetwork -ne 0 ]; then
-        echo "Removing docker-tunnelsats network..."
-        if docker network rm "docker-tunnelsats" >/dev/null; then
-            echo "> docker-tunnelsats network removed"
+        echo "Removing $dockerNetwork network..."
+        if docker network rm $dockerNetwork >/dev/null; then
+            echo "> $dockerNetwork network removed"
             echo
         else
-            echo "> ERR: could not remove docker-tunnelsats network. Please check manually."
+            echo "> ERR: could not remove $dockerNetwork network. Please check manually."
             echo
         fi
     fi
@@ -434,15 +487,15 @@ fi
 
 sleep 2
 
-# remove killswitch requirement for umbrel startup
-if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ]; then
+# remove killswitch requirement for umbrel / citadel startup
+if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/${dockerScriptPrefix}-startup.service.d/tunnelsats_killswitch.conf ]; then
     echo "Removing tunnelsats_killswitch.conf..."
-    if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf; then
-        # rm -r /etc/systemd/system/umbrel-startup.service.d >/dev/null
-        echo "> /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  removed"
+    if rm /etc/systemd/system/${dockerScriptPrefix}-startup.service.d/tunnelsats_killswitch.conf; then
+        # rm -r /etc/systemd/system/${dockerScriptPrefix}-startup.service.d >/dev/null
+        echo "> /etc/systemd/system/${dockerScriptPrefix}-startup.service.d/tunnelsats_killswitch.conf  removed"
         echo
     else
-        echo "> ERR: could not remove /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf. Please check manually."
+        echo "> ERR: could not remove /etc/systemd/system/${dockerScriptPrefix}-startup.service.d/tunnelsats_killswitch.conf. Please check manually."
         echo
     fi
 fi
@@ -468,6 +521,7 @@ if [ -f /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf ]; then
 fi
 
 sleep 2
+
 #reset lnd
 if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lnd.service.bak ] && [ "$lnImplementation" == "lnd" ]; then
     if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
@@ -552,14 +606,14 @@ fi
 # uninstall cgroup-tools, nftables, wireguard
 while true; do
     if [ $isDocker -eq 1 ]; then
-        read -p "Do you really want to uninstall nftables and wireguard via apt-get remove? (Y/N) " answer
+        read -p "Do you really want to uninstall nftables and wireguard via apt remove? (Y/N) " answer
     else
-        read -p "Do you really want to uninstall cgroup-tools, nftables and wireguard via apt-get remove?(Y/N) " answer
+        read -p "Do you really want to uninstall cgroup-tools, nftables and wireguard via apt remove?(Y/N) " answer
     fi
 
     case $answer in
     [yY]*)
-        if [[ $isDocker -eq 1 ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
+        if [[ $isDocker -eq 1 ]] && apt remove -yqq nftables wireguard-tools || apt remove -yqq cgroup-tools nftables wireguard-tools; then
             echo "> Components removed"
             echo
         else
@@ -585,7 +639,7 @@ Next steps to follow:"
 echo
 
 echo "
-Double check if proxy is correctly set in the lightning conf file
+Double-check if proxy is correctly set in the lightning config file
 CLN:   always-use-proxy=true
 LND:   tor.skip-proxy-for-clearnet-targets=false"
 echo
@@ -593,13 +647,15 @@ echo
 if [ $isDocker -eq 1 ]; then
     echo "
     Restart lightning container with
-    sudo ${HOME}/umbrel/scripts/stop (Umbrel-OS)
-    sudo ${HOME}/umbrel/scripts/start (Umbrel-OS)"
+    sudo ${dockerMainDir}/scripts/stop (${dockerScriptPrefix^}-OS)
+    sudo ${dockerMainDir}/scripts/start (${dockerScriptPrefix^}-OS)"
     echo
 else
     echo "
     Restart lightning service with
-    sudo systemctl restart lnd.service | lightningd.service"
+    sudo systemctl restart lnd.service
+    or
+    sudo systemctl restart lightningd.service"
     echo
 fi
 
