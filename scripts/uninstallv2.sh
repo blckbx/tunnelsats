@@ -77,7 +77,7 @@ while true; do
         echo
         isDocker=1
         dockerScriptPrefix="umbrel"
-        dockerMainDir=$(find / -maxdepth 6 -not -path "/mnt/*" -type f -name "bitcoin.conf" -print 2>/dev/null | sed -e 's#/bitcoin/bitcoin.conf##')
+        dockerMainDir=$(docker inspect bitcoin_bitcoind_1 | jq '.[].Mounts' | jq '.[].Source' | awk -F 'app-data' '{print $1}' | sed -e 's/"//')
         if [[ $dockerMainDir =~ [[:space:]] ]]; then
             echo "> umbrel main path is ambiguous"
             echo "> error: $dockerMainDir (contains more than one)"
@@ -190,8 +190,8 @@ while true; do
         # modify LND configuration
         path=""
         if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi
-        if [ -f ${dockerMainDir}/lnd/lnd.conf ]; then path="${dockerMainDir}/lnd/lnd.conf"; fi
-        if [ -f ${dockerMainDir}/app-data/lightning/data/lnd/lnd.conf ]; then path="${dockerMainDir}/app-data/lightning/data/lnd/lnd.conf"; fi
+        if [ -f ${dockerMainDir}lnd/lnd.conf ]; then path="${dockerMainDir}lnd/lnd.conf"; fi
+        if [ -f ${dockerMainDir}app-data/lightning/data/lnd/lnd.conf ]; then path="${dockerMainDir}app-data/lightning/data/lnd/lnd.conf"; fi
         if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi
         if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
         if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
@@ -216,8 +216,8 @@ while true; do
 
         # citadel: extra round for lnd-sample.conf template
         if [ $dockerScriptPrefix == "citadel" ]; then
-            if [ -f ${dockerMainDir}/templates/lnd-sample.conf ]; then
-                path="${dockerMainDir}/templates/lnd-sample.conf"
+            if [ -f ${dockerMainDir}templates/lnd-sample.conf ]; then
+                path="${dockerMainDir}templates/lnd-sample.conf"
                 check=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
                 if [ $check -ne 0 ]; then
 
@@ -302,7 +302,7 @@ while true; do
         # modify CLN configuration
         path=""
         if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
-        if [ -f ${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
+        if [ -f ${dockerMainDir}app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="${dockerMainDir}app-data/core-lightning/data/lightningd/bitcoin/config"; fi
         if [ -f /data/lightningd/config ]; then path="/data/lightningd/config"; fi
 
         if [ "$path" != "" ]; then
@@ -324,7 +324,7 @@ while true; do
             fi
 
             # Umbrel | Citadel CLN: restore default configuration
-            if [ "$path" == "${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
+            if [ "$path" == "${dockerMainDir}app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
                 deleteBind=$(grep -n "^bind-addr" "$path" | cut -d ':' -f1)
                 if [ "$deleteBind" != "" ]; then
                     sed -i "${deleteBind}d" "$path" >/dev/null
@@ -346,7 +346,7 @@ while true; do
             fi
 
             # Umbrel | Citadel CLN: restore assigned port
-            if [ "$path" == "${dockerMainDir}/app-data/core-lightning/exports.sh" ]; then
+            if [ "$path" == "${dockerMainDir}app-data/core-lightning/exports.sh" ]; then
                 getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
                 if [ "$getPort" != "" ]; then
                     sed -i "s/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"/g" "$path" >/dev/null
@@ -647,8 +647,8 @@ echo
 if [ $isDocker -eq 1 ]; then
     echo "
     Restart lightning container with
-    sudo ${dockerMainDir}/scripts/stop (${dockerScriptPrefix^}-OS)
-    sudo ${dockerMainDir}/scripts/start (${dockerScriptPrefix^}-OS)"
+    sudo ${dockerMainDir}scripts/stop (${dockerScriptPrefix^}-OS)
+    sudo ${dockerMainDir}scripts/start (${dockerScriptPrefix^}-OS)"
     echo
 else
     echo "
