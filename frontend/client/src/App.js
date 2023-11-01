@@ -39,7 +39,7 @@ const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
 const REACT_APP_NOSTR_URL = process.env.REACT_APP_NOSTR_URL || "";
 const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 
-const REACT_APP_REF = process.env.REACT_APP_REF || "";
+const REACT_APP_REF = process.env.REACT_APP_REF;
 const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
 
 const DEBUG = false;
@@ -625,11 +625,9 @@ function App() {
                   >
                     Onion 🧅
                   </Nav.Link>
-                  {/*
-      <Nav.Link>
-      <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
-      </Nav.Link>
-    */}
+                  <Nav.Link>
+                    <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
+                  </Nav.Link>
 
                   {/*}
       <Nav>
