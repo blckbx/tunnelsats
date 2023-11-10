@@ -625,10 +625,13 @@ function App() {
                   >
                     Onion 🧅
                   </Nav.Link>
-                  <Nav.Link>
-                    <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
-                  </Nav.Link>
-
+                  {discount != 1.0
+                    (
+                      <Nav.Link>
+                        <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
+                      </Nav.Link>
+                    )
+                  }
                   {/*}
       <Nav>
       <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
